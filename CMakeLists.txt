@@ -10,6 +10,10 @@ find_package(Kokkos 3 REQUIRED)
 find_package(Cabana REQUIRED)
 find_package(Cajita REQUIRED)
 find_package(Silo REQUIRED)
+# TODO: Have libbat find TBB/threads in its package config
+find_package(Threads REQUIRED)
+find_package(TBB REQUIRED)
+find_package(libbat REQUIRED)
 
 # library
 add_subdirectory(src)

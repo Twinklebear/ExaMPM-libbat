@@ -443,7 +443,7 @@ void writeTimeStep( const GlobalGridType& global_grid,
 
     // Add the point mesh.
     std::string mesh_name = "particles";
-    double* ptrs[3] =
+    float* ptrs[3] =
         {&host_coords(0,0), &host_coords(0,1), &host_coords(0,2)};
     DBPutPointmesh(
         silo_file,
@@ -451,7 +451,7 @@ void writeTimeStep( const GlobalGridType& global_grid,
         host_coords.extent(1),
         ptrs,
         host_coords.extent(0),
-        SiloTraits<typename CoordSliceType::value_type>::type(),
+        DB_FLOAT,
         nullptr );
 
     // Add variables.

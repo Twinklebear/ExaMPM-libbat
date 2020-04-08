@@ -16,7 +16,7 @@
 #include <ExaMPM_TimeIntegrator.hpp>
 #include <ExaMPM_Mesh.hpp>
 #include <ExaMPM_BoundaryConditions.hpp>
-#include <ExaMPM_SiloParticleWriter.hpp>
+#include <ExaMPM_BATParticleWriter.hpp>
 
 #include <Kokkos_Core.hpp>
 
@@ -78,8 +78,8 @@ class Solver : public SolverBase
 
     void solve( const double t_final, const int write_freq ) override
     {
-        SiloParticleWriter::writeTimeStep(
-            _mesh->localGrid()->globalGrid(),
+        BATParticleWriter::writeTimeStep(
+            _mesh->localGrid(),
             0,
             0.0,
             _pm->get( Location::Particle(), Field::Position() ),
@@ -99,8 +99,8 @@ class Solver : public SolverBase
             _pm->communicateParticles( _halo_min );
 
             if ( 0 == t % write_freq )
-                SiloParticleWriter::writeTimeStep(
-                    _mesh->localGrid()->globalGrid(),
+                BATParticleWriter::writeTimeStep(
+                    _mesh->localGrid(),
                     t+1,
                     time,
                     _pm->get( Location::Particle(), Field::Position() ),

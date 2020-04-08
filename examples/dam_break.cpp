@@ -87,6 +87,8 @@ void damBreak( const double cell_size,
     // Due to the 2D nature of the problem we will only partition in Y. The
     // behavior of the fluid will be to largely just run out in X and Z with
     // little movement in Y.
+    // TODO: This won't produce an imbalance IO load to work with, we'll want
+    // to actually partition in all dimensions
     int comm_size;
     MPI_Comm_size( MPI_COMM_WORLD, &comm_size );
     std::array<int,3> ranks_per_dim = { 1, comm_size, 1 };

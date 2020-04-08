@@ -23,7 +23,9 @@ target_link_libraries(exampm
   MPI::MPI_CXX
   Cabana::cabanacore
   Cajita::Cajita
-  Silo::silo )
+  Silo::silo
+  bat_io
+  TBB::tbb)
 
 target_include_directories(exampm
   PUBLIC

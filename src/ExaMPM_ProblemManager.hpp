@@ -56,12 +56,12 @@ class ProblemManager
 {
   public:
 
-    using particle_members = Cabana::MemberTypes<double[3][3],
-                                                 double[3],
-                                                 double[3],
-                                                 double,
-                                                 double,
-                                                 double>;
+    using particle_members = Cabana::MemberTypes<double[3][3], // affine
+                                                 double[3],    // velocity 
+                                                 float[3],     // position TODO WILL: double precision coords
+                                                 double,       // mass
+                                                 double,       // volume
+                                                 double>;      // J
     using particle_list = Cabana::AoSoA<particle_members,MemorySpace>;
     using particle_type = typename particle_list::tuple_type;
 
