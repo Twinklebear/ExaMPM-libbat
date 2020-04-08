@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <cmath>
+#include <chrono>
 
 #include <Cajita.hpp>
 
@@ -355,18 +356,22 @@ void writeTimeStep( const LocalGridType& local_grid,
 
     int rank = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#if 0
     std::cout << "rank " << rank << " has cells: {" << rank_lo[0] << ", " << rank_lo[1]
         << ", " << rank_lo[2] << "} to {" << rank_hi[0] << ", " << rank_hi[1] << ", "
         << rank_hi[2] << "}\n";
+#endif
 
     double low_coords[3];
     local_mesh.coordinates( Cajita::Node(), rank_lo, low_coords );
     double hi_coords[3];
     local_mesh.coordinates( Cajita::Node(), rank_hi, hi_coords );
+#if 0
     std::cout << "Spatial bounds: {" << low_coords[0] << ", " << low_coords[1]
         << ", " << low_coords[2] << "}, {"
         << hi_coords[0] << ", " << hi_coords[1] << ", " << hi_coords[2] << "}\n";
-    float rank_bounds[6] = {
+#endif
+    const float rank_bounds[6] = {
         low_coords[0], low_coords[1], low_coords[2],
         hi_coords[0], hi_coords[1], hi_coords[2]
     };
@@ -396,9 +401,23 @@ void writeTimeStep( const LocalGridType& local_grid,
     BATData data;
     writeFields( bat_file, data, mesh_name, fields... );
 
+    using namespace std::chrono;
+
     const std::string file_name = "particles_" + std::to_string(time_step_index);
-    // TODO: time it
-    bat_io_write(bat_file, file_name.c_str());
+    auto start = high_resolution_clock::now();
+    const uint64_t bytes_written = bat_io_write(bat_file, file_name.c_str());
+    auto end = high_resolution_clock::now();
+    const char *perf_stats = bat_io_get_performance_statistics(bat_file);
+    if (rank == 0) {
+        const size_t write_time = duration_cast<milliseconds>(end - start).count();
+        const float bandwidth = (bytes_written * 1e-6f) / (write_time * 1e-3f);
+        std::cout << "Total write time: " << write_time << "ms\n"
+            << "Total bytes written: " << bytes_written << "b\n"
+            << "Write bandwidth: " << bandwidth << "MB/s\n"
+            << "Perf Stats: " << perf_stats << "\n"
+            << "=======\n"
+            << std::flush;
+    }
 
     bat_io_free(bat_file);
 }
