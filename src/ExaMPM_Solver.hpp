@@ -20,6 +20,7 @@
 
 #include <Kokkos_Core.hpp>
 
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -86,6 +87,8 @@ class Solver : public SolverBase
             _pm->get( Location::Particle(), Field::Velocity() ),
             _pm->get( Location::Particle(), Field::J() ) );
 
+        using namespace std::chrono;
+
         int num_step = t_final / _dt;
         double delta_t = t_final / num_step;
         double time = 0.0;
@@ -96,7 +99,12 @@ class Solver : public SolverBase
                 fflush(0);
             }
 
+            auto start = high_resolution_clock::now();
             TimeIntegrator::step( ExecutionSpace(), *_pm, delta_t, _gravity, _bc );
+            auto end = high_resolution_clock::now();
+            if (_rank == 0) {
+                std::cout << "Timestep " << t << " took: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+            }
 
             _pm->communicateParticles( _halo_min );
 

@@ -5,7 +5,7 @@ set(HEADERS
   ExaMPM_ParticleCommunication.hpp
   ExaMPM_ParticleInit.hpp
   ExaMPM_ProblemManager.hpp
-  ExaMPM_SiloParticleWriter.hpp
+  ExaMPM_BATParticleWriter.hpp
   ExaMPM_Solver.hpp
   ExaMPM_TimeIntegrator.hpp
   ExaMPM_Types.hpp
@@ -23,7 +23,6 @@ target_link_libraries(exampm
   MPI::MPI_CXX
   Cabana::cabanacore
   Cajita::Cajita
-  Silo::silo
   bat_io
   TBB::tbb)
 

@@ -12,6 +12,9 @@
 #ifndef EXAMPM_BATPARTICLEWRITER_HPP
 #define EXAMPM_BATPARTICLEWRITER_HPP
 
+#include <unistd.h>
+#include <cstring>
+#include <fstream>
 #include <memory>
 #include <cmath>
 #include <chrono>
@@ -25,8 +28,6 @@
 #include <bat_io.h>
 
 #include <mpi.h>
-
-#include <pmpio.h>
 
 #include <sstream>
 #include <string>
@@ -355,7 +356,9 @@ void writeTimeStep( const LocalGridType& local_grid,
     auto local_mesh = Cajita::createLocalMesh<device_type>( *local_grid );
 
     int rank = 0;
+    int comm_size = 0;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
 #if 0
     std::cout << "rank " << rank << " has cells: {" << rank_lo[0] << ", " << rank_lo[1]
         << ", " << rank_lo[2] << "} to {" << rank_hi[0] << ", " << rank_hi[1] << ", "
@@ -390,8 +393,6 @@ void writeTimeStep( const LocalGridType& local_grid,
     auto bat_file = bat_io_allocate();
 
     bat_io_set_local_bounds(bat_file, rank_bounds);
-    // TODO: Read from env
-    bat_io_set_bytes_per_subfile(bat_file, 4000000);
     bat_io_set_positions(bat_file,
                          positions_buf,
                          host_coords.extent(0),
@@ -403,20 +404,91 @@ void writeTimeStep( const LocalGridType& local_grid,
 
     using namespace std::chrono;
 
-    const std::string file_name = "particles_" + std::to_string(time_step_index);
-    auto start = high_resolution_clock::now();
-    const uint64_t bytes_written = bat_io_write(bat_file, file_name.c_str());
-    auto end = high_resolution_clock::now();
-    const char *perf_stats = bat_io_get_performance_statistics(bat_file);
-    if (rank == 0) {
-        const size_t write_time = duration_cast<milliseconds>(end - start).count();
-        const float bandwidth = (bytes_written * 1e-6f) / (write_time * 1e-3f);
-        std::cout << "Total write time: " << write_time << "ms\n"
-            << "Total bytes written: " << bytes_written << "b\n"
-            << "Write bandwidth: " << bandwidth << "MB/s\n"
-            << "Perf Stats: " << perf_stats << "\n"
-            << "=======\n"
-            << std::flush;
+    const uint64_t local_particles = host_coords.extent(0);
+    uint64_t global_particles = 0;
+    MPI_Allreduce(&local_particles, &global_particles, 1,
+            MPI_UNSIGNED_LONG_LONG,
+            MPI_SUM,
+            MPI_COMM_WORLD);
+
+    // Each particle is ~36 bytes
+    const size_t particle_size = 36;
+    const size_t global_bytes = global_particles * particle_size;
+    const size_t fpp_size = global_bytes / comm_size + global_bytes % comm_size;
+
+    std::string file_name;
+    if (getenv("OUTPUT_FILE")) {
+        file_name = getenv("OUTPUT_FILE");
+    } else {
+        file_name = "particles";
+    }
+
+    if (getenv("JOB_ID") == nullptr) {
+        throw std::runtime_error("JOB_ID must be set in the environment");
+    }
+    const std::string job_id = getenv("JOB_ID");
+
+    const int do_fixed_agg = getenv("FIXED_AGGREGATION") != nullptr ? 1 : 0;
+    const int do_dump_raw = getenv("DUMP_RAW") != nullptr ? 1 : 0;
+
+    // Run a set of write scaling experiments so we can do the tests in a single job
+    const int max_agg_steps = std::min(static_cast<int>(std::log2(comm_size)), 5);
+    for (int agg_step = 0; agg_step <= max_agg_steps; ++agg_step) {
+        for (int fixed_agg = 0; fixed_agg <= do_fixed_agg; ++fixed_agg) {
+            for (int dump_raw = 0; dump_raw <= do_dump_raw; ++dump_raw) {
+                const size_t agg_size = (1 << agg_step) * fpp_size;
+
+                std::string log_file = "dambreak-" + std::to_string(agg_step)
+                    + "-" + job_id;
+                if (rank == 0) {
+                    std::cout << "Aggregation size: " << agg_size
+                        << " (avg. fpp size: " << fpp_size << ")\n";
+
+                    if (dump_raw) {
+                        std::cout << "Dump raw\n";
+                        log_file += "-raw";
+                    }
+                    if (fixed_agg) {
+                        std::cout << "Fixed aggregation\n";
+                        log_file += "-fixed";
+                    }
+                    log_file += ".out";
+                    std::cout << "Logged to " << log_file << "\n";
+                }
+
+                bat_io_set_bytes_per_subfile(bat_file, agg_size);
+                bat_io_set_build_local_trees(bat_file, !dump_raw);
+                bat_io_set_fixed_aggregation(bat_file, fixed_agg);
+
+                std::string test_file_name = file_name + "-" + std::to_string(agg_step)
+                    + "-t" + std::to_string(time_step_index);
+                if (dump_raw) {
+                    test_file_name += "-raw";
+                }
+                if (fixed_agg) {
+                    test_file_name += "-fixed";
+                }
+
+                auto start = high_resolution_clock::now();
+                const uint64_t bytes_written = bat_io_write(bat_file, test_file_name.c_str());
+                auto end = high_resolution_clock::now();
+                const char *perf_stats = bat_io_get_performance_statistics(bat_file);
+                if (rank == 0) {
+                    std::ofstream log_out(log_file.c_str(), std::ios::app | std::ios::out);
+
+                    const size_t write_time = duration_cast<milliseconds>(end - start).count();
+                    const float bandwidth = (bytes_written * 1e-6f) / (write_time * 1e-3f);
+                    log_out << "Timestep: " << time_step_index << "\n"
+                        << "Target size: " << agg_size << "b\n"
+                        << "Total write time: " << write_time << "ms\n"
+                        << "Total bytes written: " << bytes_written << "b\n"
+                        << "Write bandwidth: " << bandwidth << "MB/s\n"
+                        << "Perf Stats: " << perf_stats << "\n"
+                        << "=======\n"
+                        << std::flush;
+                }
+            }
+        }
     }
 
     bat_io_free(bat_file);
